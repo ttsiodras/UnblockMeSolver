@@ -8,4 +8,4 @@ mirrored [here](http://ttsiodras.github.com/unblock.html)).
 
 And here's [a Youtube video](http://www.youtube.com/watch?v=6hfF_6KlAQk) of the code in action :-)
 
-Use "make test" to see it in action (the Makefile uses ImageMagick to convert the image data into RGB files, so you need to install it first).
+Use "make test" to see it solve one of the sample screenshots. Note that the Makefile uses ImageMagick to convert the image data into RGB files, so you need to install it first.
