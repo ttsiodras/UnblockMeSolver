@@ -260,7 +260,7 @@ void SolveBoard(list<Block>& pieces)
     // so we need a 'visited' set:
     set<Board> visited;
 
-    // Now, to implement Depth First Search, all we need is a Queue
+    // Now, to implement Breadth First Search, all we need is a Queue
     // storing the states we need to investigate - so it needs to
     // be a list of board states... i.e. a list of list of Blocks!
     list< list<Block> > queue;
