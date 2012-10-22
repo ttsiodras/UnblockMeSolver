@@ -20,4 +20,4 @@ data.rgb:	IMG_0354.PNG
 	convert $< $@
 
 clean:
-	rm -f $(TARGET) $(TARGET).o data.rgb
+	rm -f $(TARGET) $(TARGET).o data.rgb Unblock-solve-c++11
