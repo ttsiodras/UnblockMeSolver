@@ -109,8 +109,8 @@ list<Block> ScanBodiesAndBordersAndEmitStartingBlockPositions()
                             Block(y,x, true, g_tiles[y][x], xend-x));
                     }
                 } else if (g_borders[2*y][x] == white) {
-                    // If a tile doesn't have white on top and black on bottom,
-                    // then it is part of a vertical block
+                    // If a tile has white on top, but no black
+                    // on bottom, then it is part of a vertical block.
                     isTileKnown[y][x] = true;
                     int yend = y+1;
                     // Scan vertically to find its end
