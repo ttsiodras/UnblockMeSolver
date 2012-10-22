@@ -57,9 +57,9 @@ int Block::BlockId = 0;
 // arrays, and understands where the blocks are.
 //
 // Returns a list of the detected Blocks
-list<Block> ScanBodiesAndBordersAndEmitStartingPiecePositions()
+list<Block> ScanBodiesAndBordersAndEmitStartingBlockPositions()
 {
-    list<Block> pieces;
+    list<Block> blocks;
     bool isTileKnown[SIZE][SIZE];
 
     // Initially, we don't have a clue what each tile has
@@ -98,15 +98,15 @@ list<Block> ScanBodiesAndBordersAndEmitStartingPiecePositions()
                         // ...in that case, emit two blocks of length 2
                         cout << "Horizontal blocks at " << y << "," << x;
                         cout << " of length 2 " << marker << "\n";
-                        pieces.push_back(
+                        blocks.push_back(
                             Block(y,x, true, g_tiles[y][x], 2));
-                        pieces.push_back(
+                        blocks.push_back(
                             Block(y,x+2, true, g_tiles[y][x+2], 2));
                     } else {
                         // ... otherwise emit only one block
                         cout << "Horizontal block at " << y << "," << x;
                         cout << " of length " << xend-x << marker << "\n";
-                        pieces.push_back(
+                        blocks.push_back(
                             Block(y,x, true, g_tiles[y][x], xend-x));
                     }
                 } else if (g_borders[2*y][x] == white) {
@@ -121,7 +121,7 @@ list<Block> ScanBodiesAndBordersAndEmitStartingPiecePositions()
                     }
                     cout << "Vertical   block at " << y << "," << x;
                     cout << " of length " << yend-y+1 << marker << "\n";
-                    pieces.push_back(
+                    blocks.push_back(
                         Block(y,x, false, g_tiles[y][x], yend-y+1));
                 } else
                     // either an empty, or a body-of-block tile
@@ -135,7 +135,7 @@ list<Block> ScanBodiesAndBordersAndEmitStartingPiecePositions()
         if (allDone)
             break;
     }
-    return pieces;
+    return blocks;
 }
 
 // A board is indeed represented as a list of Blocks.
@@ -160,10 +160,10 @@ struct Board {
 
 // This function takes a list of blocks, and 'renders' them
 // into a Board - for quick tile access.
-Board renderPieces(list<Block>& pieces)
+Board renderBlocks(list<Block>& blocks)
 {
     Board tmp;
-    for(auto& p: pieces) {
+    for(auto& p: blocks) {
         if (p._isHorizontal)
             for(int i=0; i<p._length; i++)
                 tmp(p._y, p._x+i) = p._kind;
@@ -175,31 +175,31 @@ Board renderPieces(list<Block>& pieces)
 }
 
 // This function pretty-prints a list of blocks
-void printBoard(const list<Block>& pieces)
+void printBoard(const list<Block>& blocks)
 {
     unsigned char tmp[SIZE][SIZE];
     // start from an empty buffer
     memset(tmp, ' ', sizeof(tmp));
-    for(auto& piece: pieces) {
+    for(auto& block: blocks) {
         char c; // character emitted for this tile
-        switch (piece._kind) {
-        case empty:
+        switch (block._kind) {
+        case TileKind::empty:
             c = ' ';
             break;
-        case prisoner:
+        case TileKind::prisoner:
             c = 'Z'; // Our Zorro tile :-)
             break;
         // ... and use a different letter for each block
-        case block:
-            c = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[piece._id];
+        case TileKind::block:
+            c = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[block._id];
             break;
         }
-        if (piece._isHorizontal)
-            for(int i=0; i<piece._length; i++)
-                tmp[piece._y][piece._x+i] = c;
+        if (block._isHorizontal)
+            for(int i=0; i<block._length; i++)
+                tmp[block._y][block._x+i] = c;
         else
-            for(int i=0; i<piece._length; i++)
-                tmp[piece._y+i][piece._x] = c;
+            for(int i=0; i<block._length; i++)
+                tmp[block._y+i][block._x] = c;
     }
 
     cout << "+------------------+\n|";
@@ -228,10 +228,10 @@ struct Move {
 
 // Utility function - we need to be able to "deep copy"
 // a list of Blocks, to form alternate board states (see SolveBoard)
-list<Block> copyBlocks(const list<Block>& pieces)
+list<Block> copyBlocks(const list<Block>& blocks)
 {
     list<Block> copied;
-    for(auto& block : pieces) copied.push_back(block);
+    for(auto& block : blocks) copied.push_back(block);
     return copied;
 }
 
@@ -239,7 +239,7 @@ list<Block> copyBlocks(const list<Block>& pieces)
 // of the problem space:
 //    http://en.wikipedia.org/wiki/Breadth-first_search
 //
-void SolveBoard(list<Block>& pieces)
+void SolveBoard(list<Block>& blocks)
 {
     cout << "\nSearching for a solution...\n";
 
@@ -251,7 +251,7 @@ void SolveBoard(list<Block>& pieces)
     // state - we used no Move to achieve it, so store a block id
     // of -1 to mark it:
     previousMoves.insert(
-        pair<Board,Move>(renderPieces(pieces), Move(-1, Move::left)));
+        pair<Board,Move>(renderBlocks(blocks), Move(-1, Move::left)));
 
     // We must not revisit board states we have already examined,
     // so we need a 'visited' set:
@@ -263,15 +263,15 @@ void SolveBoard(list<Block>& pieces)
     list< list<Block> > queue;
 
     // Start with our initial board state
-    queue.push_back(pieces);
+    queue.push_back(blocks);
     while(!queue.empty()) {
 
         // Extract first element of the queue
-        list<Block> pieces = *queue.begin();
+        auto blocks = *queue.begin();
         queue.pop_front();
 
         // Create a Board for fast 2D access to tile state
-        Board board = renderPieces(pieces);
+        Board board = renderBlocks(blocks);
 
         // Have we seen this board before?
         if (visited.find(board) != visited.end())
@@ -284,9 +284,9 @@ void SolveBoard(list<Block>& pieces)
 
         // Check if this board state is a winning state:
         // Find prisoner block...
-        auto it=find_if(pieces.begin(), pieces.end(),
+        auto it=find_if(blocks.begin(), blocks.end(),
             [](Block& x) { return x._kind == prisoner; });
-        assert(it != pieces.end()); // The prisoner is always there!
+        assert(it != blocks.end()); // The prisoner is always there!
 
         // Can he escape? Check to his right!
         bool allClear = true;
@@ -303,35 +303,36 @@ void SolveBoard(list<Block>& pieces)
             // backtrack through the board states to print
             // the Move we used at each one...
             list<list<Block> > solution;
-            solution.push_front(copyBlocks(pieces));
+            solution.push_front(copyBlocks(blocks));
 
-            map<Board,Move>::iterator itMove = previousMoves.find(board);
+            auto itMove = previousMoves.find(board);
             while (itMove != previousMoves.end()) {
                 if (itMove->second._blockId == -1)
                     // Sentinel - reached starting board
                     break;
                 // Find the block we moved, and move it
                 // (in reverse direction - we are going back)
-                for(it=pieces.begin(); it!=pieces.end(); it++) {
-                    if (it->_id == itMove->second._blockId) {
-                        switch(itMove->second._move) {
-                        case Move::left:  it->_x++; break;
-                        case Move::right: it->_x--; break;
-                        case Move::up:    it->_y++; break;
-                        case Move::down:  it->_y--; break;
-                        }
-                        break;
-                    }
+                auto it = find_if(blocks.begin(), blocks.end(),
+                    [itMove](Block& block) {
+                        return block._id == itMove->second._blockId;
+                    });
+                assert(it != blocks.end());
+
+                switch(itMove->second._move) {
+                case Move::left:  it->_x++; break;
+                case Move::right: it->_x--; break;
+                case Move::up:    it->_y++; break;
+                case Move::down:  it->_y--; break;
                 }
-                assert(it != pieces.end());
+
                 // Add this board to the front of the list...
-                solution.push_front(copyBlocks(pieces));
-                board = renderPieces(pieces);
+                solution.push_front(copyBlocks(blocks));
+                board = renderBlocks(blocks);
                 itMove = previousMoves.find(board);
             }
             // Now that we have the full list, emit it in order
-            for(auto& pieces: solution) {
-                printBoard(pieces);
+            for(auto& blocks: solution) {
+                printBoard(blocks);
                 cout << "Press ENTER for next move\n";
                 cin.get();
             }
@@ -343,48 +344,47 @@ void SolveBoard(list<Block>& pieces)
         //
         // Add all potential states arrising from immediate
         // possible moves to the end of the queue.
-        for(it=pieces.begin(); it!=pieces.end(); it++) {
-            Block& piece = *it;
+        for(auto& block: blocks) {
 
 #define COMMON_BODY(direction) \
-    list<Block> copied = copyBlocks(pieces);                  \
+    auto copiedBlocks = copyBlocks(blocks);                   \
     /* Add to the end of the queue for further study :-) */   \
-    queue.push_back(copied);                                  \
+    queue.push_back(copiedBlocks);                            \
     /* Store board and move, so we can backtrack later */     \
     previousMoves.insert(                                     \
         pair<Board,Move>(                                     \
-            renderPieces(copied),                             \
-            Move(piece._id, Move::direction)));
+            renderBlocks(copiedBlocks),                       \
+            Move(block._id, Move::direction)));
 
-            if (piece._isHorizontal) {
+            if (block._isHorizontal) {
                 // Can the block move to the left?
-                if (piece._x>0 &&
-                        empty==board(piece._y, piece._x-1)) {
-                    piece._x--;
+                if (block._x>0 &&
+                        empty==board(block._y, block._x-1)) {
+                    block._x--;
                     COMMON_BODY(left)
-                    piece._x++;
+                    block._x++;
                 }
                 // Can the block move to the right?
-                if (piece._x+piece._length<SIZE &&
-                        empty==board(piece._y, piece._x+piece._length)) {
-                    piece._x++;
+                if (block._x+block._length<SIZE &&
+                        empty==board(block._y, block._x+block._length)) {
+                    block._x++;
                     COMMON_BODY(right)
-                    piece._x--;
+                    block._x--;
                 }
             } else {
                 // Can the block move up?
-                if (piece._y>0 &&
-                        empty==board(piece._y-1, piece._x)) {
-                    piece._y--;
+                if (block._y>0 &&
+                        empty==board(block._y-1, block._x)) {
+                    block._y--;
                     COMMON_BODY(up)
-                    piece._y++;
+                    block._y++;
                 }
                 // Can the block move down?
-                if (piece._y+piece._length<SIZE &&
-                        empty==board(piece._y + piece._length, piece._x)) {
-                    piece._y++;
+                if (block._y+block._length<SIZE &&
+                        empty==board(block._y + block._length, block._x)) {
+                    block._y++;
                     COMMON_BODY(down)
-                    piece._y--;
+                    block._y--;
                 }
             }
         }
@@ -465,7 +465,7 @@ int main()
     rgbDataFileStream.close();
     DetectTileBodies();
     DetectTopAndBottomTileBorders();
-    list<Block> pieces =
-        ScanBodiesAndBordersAndEmitStartingPiecePositions();
-    SolveBoard(pieces);
+    list<Block> blocks =
+        ScanBodiesAndBordersAndEmitStartingBlockPositions();
+    SolveBoard(blocks);
 }
