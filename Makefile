@@ -1,7 +1,15 @@
+# To compile with my Linux-based iPhone cross-compiler,
+# I had to remove "assert" - because it uses 'abort',
+# which is apparently missing from my cross compiler's RTL.
+
 CXXFLAGS=-Wall -g
+
+# Better error reporting
 #CXX=clang++
 CXX=g++
 
+# You can uncomment this one, to use the C++11 version
+# TARGET= Unblock-solve-c++11
 TARGET= Unblock-solve
 
 all:	$(TARGET)
