@@ -34,4 +34,4 @@ data.rgb:	IMG_0354.PNG
 	convert $< $@
 
 clean:
-	rm -f $(TARGETCPP) $(TARGETCPP11) $(TARGETOCAML) data.rgb  Unblock.cm?
+	rm -f $(TARGETCPP) $(TARGETCPP11) $(TARGETOCAML) data.rgb  Unblock.cm? Unblock.o

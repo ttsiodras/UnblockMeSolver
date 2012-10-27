@@ -183,10 +183,9 @@ void printBoard(const list<Block>& blocks)
     list<Block>::const_iterator it=blocks.begin();
     for(; it!=blocks.end(); it++) {
         const Block& block = *it;
-        char c; // character emitted for this tile
+        char c=' '; // character emitted for this tile
         switch (block._kind) {
         case empty:
-            c = ' ';
             break;
         case prisoner:
             c = 'Z'; // Our Zorro tile :-)
