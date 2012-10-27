@@ -355,18 +355,21 @@ void SolveBoard(list<Block>& blocks)
             Block& block = *it;
 
 #define COMMON_BODY(direction) \
-    list<Block> copied = copyBlocks(blocks);                  \
-    /* Add to the end of the queue for further study :-) */   \
-    queue.push_back(copied);                                  \
-    /* Store board and move, so we can backtrack later */     \
-    previousMoves.insert(                                     \
-        pair<Board,Move>(                                     \
-            renderBlocks(copied),                             \
-            Move(block._id, Move::direction)));
+    list<Block> copiedBlocks = copyBlocks(blocks);            \
+    Board candidateBoard = renderBlocks(copiedBlocks);        \
+    if (visited.find(candidateBoard) == visited.end()) {      \
+        /* Add to the end of the queue for further study */   \
+        queue.push_back(copiedBlocks);                        \
+        /* Store board and move, so we can backtrack later */ \
+        previousMoves.insert(                                 \
+            pair<Board,Move>(                                 \
+                candidateBoard,                               \
+                Move(block._id, Move::direction)));           \
+    }
 
             if (block._isHorizontal) {
                 // Can the block move to the left?
-                if (block._x>0 && 
+                if (block._x>0 &&
                         empty==board(block._y, block._x-1)) {
                     block._x--;
                     COMMON_BODY(left)

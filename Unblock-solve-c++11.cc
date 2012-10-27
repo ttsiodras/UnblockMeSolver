@@ -348,13 +348,16 @@ void SolveBoard(list<Block>& blocks)
 
 #define COMMON_BODY(direction) \
     auto copiedBlocks = copyBlocks(blocks);                   \
-    /* Add to the end of the queue for further study :-) */   \
-    queue.push_back(copiedBlocks);                            \
-    /* Store board and move, so we can backtrack later */     \
-    previousMoves.insert(                                     \
-        pair<Board,Move>(                                     \
-            renderBlocks(copiedBlocks),                       \
-            Move(block._id, Move::direction)));
+    auto candidateBoard = renderBlocks(copiedBlocks);         \
+    if (visited.find(candidateBoard) == visited.end()) {      \
+        /* Add to the end of the queue for further study */   \
+        queue.push_back(copiedBlocks);                        \
+        /* Store board and move, so we can backtrack later */ \
+        previousMoves.insert(                                 \
+            pair<Board,Move>(                                 \
+                candidateBoard,                               \
+                Move(block._id, Move::direction)));           \
+    }
 
             if (block._isHorizontal) {
                 // Can the block move to the left?
