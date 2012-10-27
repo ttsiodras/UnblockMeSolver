@@ -58,8 +58,8 @@ let detectHorizontalSpan y x blocks tiles borders isTileKnown marker =
     if length = 4 then (
         (* ...in that case, emit two blocks of length 2 *)
         Printf.printf "Horizontal blocks at %d,%d of length 2 %s\n" y x marker;
-        blocks := (make_block y x true tiles.(y).(x) 2) ::
-                  (make_block y (x+2) true tiles.(y).(x+2) 2) ::
+        blocks := (make_block y (x+2) true tiles.(y).(x+2) 2) ::
+                  (make_block y x true tiles.(y).(x) 2) ::
                   !blocks
     ) else (
         (* ... otherwise emit only one block *)
@@ -82,8 +82,8 @@ let detectVerticalSpan y x blocks tiles borders isTileKnown marker =
     Printf.printf "Vertical   block at %d,%d of length %d\n" y x length;
     blocks :=
         make_block y x false tiles.(y).(x) length ::
-        !blocks ;
-    ()
+        !blocks
+
 
 let detectSpans y x blocks tiles borders isTileKnown =
     let marker = match tiles.(y).(x) with
@@ -131,6 +131,7 @@ let scanBodiesAndBordersAndEmitStartingBlockPositions tiles borders =
         done ;
     done ;
     List.rev !blocks
+
 
 (* This function looks at the center pixel of each tile,
    and guesses what TileKind it is.
@@ -374,9 +375,10 @@ let solveBoard listOfBlocks =
                 done;
                 (*  Now that we have the full list, emit it in order *)
                 solution |> Stack.iter (fun listOfBlocks -> (
-                    print_endline "Press ENTER to see next move\n";
+                    printBoard listOfBlocks;
+                    print_endline "Press ENTER to see next move";
                     let dummy = input_line stdin in
-                    printBoard listOfBlocks))
+                    print_endline ""))
                 ;
                 Printf.printf "Run free, prisoner, run! :-)\n";
                 exit 0;
