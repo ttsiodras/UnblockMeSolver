@@ -1,9 +1,7 @@
-(* RGB data of the image *)
+(* for RGB data of the image *)
 open Bigarray
-
 let g_width = 320
 let g_height = 480
-let image = Array.make_matrix g_height g_width 0
 
 (* The board is g_boardSize x g_boardSize tiles *)
 let g_boardSize = 6
@@ -63,13 +61,13 @@ let detectHorizontalSpan y x blocks tiles borders isTileKnown marker =
     let length = !xend - x in
     if length = 4 then (
         (* ...in that case, emit two blocks of length 2 *)
-        Printf.printf "Horizontal blocks at %d, %d of length 2 %s\n" y x marker;
+        Printf.printf "Horizontal blocks at %d,%d of length 2 %s\n" y x marker;
         blocks := (make_block y x true tiles.(y).(x) 2) ::
                   (make_block y (x+2) true tiles.(y).(x+2) 2) ::
                   !blocks
     ) else (
         (* ... otherwise emit only one block *)
-        Printf.printf "Horizontal block at %d, %d of length %d %s\n" y x length marker;
+        Printf.printf "Horizontal block at %d,%d of length %d %s\n" y x length marker;
         blocks := (make_block y x true tiles.(y).(x) length) :: !blocks
     )
 
@@ -85,7 +83,7 @@ let detectVerticalSpan y x blocks tiles borders isTileKnown marker =
         yend := !yend + 1;
     done;
     let length = !yend - y + 1 in
-    Printf.printf "Vertical block at %d, %d of length %d\n" y x length;
+    Printf.printf "Vertical   block at %d,%d of length %d\n" y x length;
     blocks :=
         make_block y x false tiles.(y).(x) length ::
         !blocks ;
