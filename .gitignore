@@ -2,3 +2,7 @@ Unblock-solve
 Unblock-solve.o
 Unblock-solve-c++11
 data.rgb
+Unblock
+Unblock.cmi
+Unblock.cmx
+Unblock.o

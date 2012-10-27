@@ -1,4 +1,4 @@
-# To compile with my Linux-based iPhone cross-compiler,
+# Note: To compile with my Linux-based iPhone cross-compiler,
 # I had to remove "assert" - because it uses 'abort',
 # which is apparently missing from my cross compiler's RTL.
 
@@ -10,22 +10,28 @@ CXX=g++
 
 # You can uncomment this one, to use the C++11 version
 # TARGET= Unblock-solve-c++11
-TARGET= Unblock-solve
+TARGETCPP=Unblock-solve
+TARGETCPP11=Unblock-solve-c++11
+TARGETOCAML=Unblock
 
-all:	$(TARGET)
+all:	$(TARGETCPP)
 
-$(TARGET): $(TARGET).o
-	$(CXX) -o $@ $(CXXFLAGS) $<
+$(TARGETCPP): $(TARGETCPP).cc
+	$(CXX) -O3 -o $@ $(CXXFLAGS) $<
 
-Unblock-solve-c++11:	Unblock-solve-c++11.cc
+$(TARGETCPP11):	$(TARGETCPP11).cc
 	$(CXX) -std=c++0x -o $@ $(CXXFLAGS) $<
 
-test: data.rgb | $(TARGET)
+$(TARGETOCAML):	$(TARGETOCAML).ml
+	ocamlopt -o ./$@ bigarray.cmxa $<
+	#ocamlopt -unsafe -rectypes -inline 1000 -o ./$@ common.ml $<
+
+test: data.rgb | $(TARGETCPP)
 	display -size 320x480 -depth 8 data.rgb &
-	./$(TARGET)
+	./$(TARGETCPP)
 
 data.rgb:	IMG_0354.PNG
 	convert $< $@
 
 clean:
-	rm -f $(TARGET) $(TARGET).o data.rgb Unblock-solve-c++11
+	rm -f $(TARGETCPP) $(TARGETCPP11) $(TARGETOCAML) data.rgb  Unblock.cm?
