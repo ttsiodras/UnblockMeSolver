@@ -182,30 +182,21 @@ let scanBodiesAndBordersAndEmitStartingBlockPositions tiles borders =
     let blocks = ref [] in
     (* Initially, we don't have a clue what each tile has *)
     let isTileKnown = Array.make_matrix g_boardSize g_boardSize false in
-    let allDone = ref false in
-    while not !allDone do
-        for y=0 to pred g_boardSize do
-            for x=0 to pred g_boardSize do
-                match isTileKnown.(y).(x) , tiles.(y).(x) with
-                | true, _ ->
-                    (* Skip over known tiles *)
-                    ()
-                | false, Empty ->
-                    (* Skip over empty tiles *)
-                    isTileKnown.(y).(x) <- true
-                | false, _ ->
-                    isTileKnown.(y).(x) <- true;
-                    blocks :=
-                        List.append
-                            (detectBlockSpans y x tiles borders isTileKnown)
-                            !blocks
-            done
-        done ;
-        allDone := true ;
-        for y=0 to pred g_boardSize do
-            for x=0 to pred g_boardSize do
-                allDone := !allDone && isTileKnown.(y).(x)
-            done
+    for y=0 to pred g_boardSize do
+        for x=0 to pred g_boardSize do
+            match isTileKnown.(y).(x) , tiles.(y).(x) with
+            | true, _ ->
+                (* Skip over known tiles *)
+                ()
+            | false, Empty ->
+                (* Skip over empty tiles *)
+                isTileKnown.(y).(x) <- true
+            | false, _ ->
+                isTileKnown.(y).(x) <- true;
+                blocks :=
+                    List.append
+                        (detectBlockSpans y x tiles borders isTileKnown)
+                        !blocks
         done
     done ;
     List.rev !blocks
