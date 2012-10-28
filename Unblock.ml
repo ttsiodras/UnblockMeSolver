@@ -6,49 +6,129 @@ let g_height = 480
 (* The board is g_boardSize x g_boardSize tiles *)
 let g_boardSize = 6
 
-(* The tile "bodies" information - filled by DetectTileBodies()
-   via heuristics on the center pixel of the tile *)
+(* Debugging mode *)
+let g_debug = ref false
 
-type tileKind =
-    Empty
-  | Block
-  | Prisoner
+(* Very useful syntactic sugar *)
+let ( |> ) x fn = fn x
+
+(* The tile "bodies" information - filled by detectTileBodies below,
+   via heuristics on the center pixel of the tiles *)
+type tileKind = Empty | Block | Prisoner
+
+(* This function looks at the center pixel of each tile,
+   and guesses what tileKind it is.
+   (Heuristics on the snapshots taken from my iPhone) *)
+let detectTileBodies all_channels =
+    if !g_debug then
+        print_endline "Detecting tile bodies...";
+    let tiles = Array.make_matrix g_boardSize g_boardSize Empty in
+    for y=0 to pred g_boardSize do
+        for x=0 to pred g_boardSize do
+            let line = 145 + y*50 in
+            let column = 34 + x*50 in
+            (* The red channel, surprisingly, was not necessary *)
+            let g = all_channels.{1,column,line} in
+            let b = all_channels.{2,column,line} in
+            if (b > 30) then       tiles.(y).(x) <- Empty
+            else if (g < 30) then  tiles.(y).(x) <- Prisoner
+            else                   tiles.(y).(x) <- Block;
+        done;
+    done;
+    tiles
 
 (* The top and bottom "borders" of each tile
-   (hence the 2x in the vertical direction)
-   filled by DetectTopAndBottomTileBorders()  *)
+   filled by detectTopAndBottomTileBorders below
+   via heuristics on the top/bottom centerPixel of the tiles *)
+type borderKind = NotBorder | White | Black
+type tileBorderInfo = {
+    _topBorder: borderKind;
+    _bottomBorder: borderKind;
+}
 
-type borderKind =
-    NotBorder
-  | White
-  | Black
+let detectTopAndBottomTileBorders all_channels =
+    let borders =
+        Array.make_matrix g_boardSize g_boardSize
+            { _topBorder = NotBorder; _bottomBorder = NotBorder }
+        in
+    if !g_debug then
+        print_endline "Detecting top and bottom tile borders...\n";
+    for y=0 to pred g_boardSize do
+        for x=0 to pred g_boardSize do
+            let line    = 145 + y*50 in
+            let column  =  34 + x*50 in
+            let ytop    = line - 23 in
+            let ybottom = line + 23 in
+            let rgbToBorderKind r g =
+                if r > 200 && g > 160 then White
+                else if r < 40 && g < 30 then Black
+                else NotBorder
+                in
+            let rtop = all_channels.{0,column,ytop} in
+            let gtop = all_channels.{1,column,ytop} in
+            let topBorderKind = rgbToBorderKind rtop gtop in
 
-(* The board is a list of Blocks *)
-let blockId = ref (-1)
+            let rbottom = all_channels.{0,column,ybottom} in
+            let gbottom = all_channels.{1,column,ybottom} in
+            let bottomBorderKind = rgbToBorderKind rbottom gbottom in
 
+            borders.(y).(x) <-
+                { _topBorder=topBorderKind; _bottomBorder=bottomBorderKind }
+        done
+    done;
+    borders
+
+(* function to debug stage 1, i.e. parsing imageData into tiles/borders *)
+let printTiles tiles borders =
+    let printBorder = function
+        | NotBorder -> Printf.printf "       ";
+        | White     -> Printf.printf "------ ";
+        | Black     -> Printf.printf "====== " in
+    let printBlock = function
+        | Empty    -> Printf.printf "       ";
+        | Block    -> Printf.printf "OOOOOO ";
+        | Prisoner -> Printf.printf "XXXXXX " in
+    for y=0 to pred g_boardSize do
+        for x=0 to pred g_boardSize do
+            printBorder borders.(y).(x)._topBorder done;
+        print_newline ();
+        for x=0 to pred g_boardSize do printBlock tiles.(y).(x) done;
+        print_newline ();
+        for x=0 to pred g_boardSize do
+            printBorder borders.(y).(x)._bottomBorder done;
+        print_newline ();
+    done;
+    print_newline ()
+
+(* The board is represented as a list of blocks *)
+let g_blockIdSeq = ref (-1) (* global counter used to assign blk id *)
 type block = {
-    _id: int;            (* ...uniquely identify each block    *)
-    _y: int;             (* block's top-left tile coordinates  *)
-    _x: int;             (* block's top-left tile coordinates  *)
-    _isHorizontal: bool; (* whether the block is Horiz/Vert    *)
-    _kind: tileKind;     (* can only be block or prisoner      *)
-    _length: int;        (* how many tiles long this block is  *)
+    _id: int;               (* ... and uniquely identify each block *)
+    _y: int;                (* block's top-left tile coordinates    *)
+    _x: int;                (* block's top-left tile coordinates    *)
+    _isHorizontal: bool;    (* whether the block is Horiz/Vert      *)
+    _kind: tileKind;        (* can only be block or prisoner        *)
+    _length: int;           (* how many tiles long this block is    *)
 }
 let make_block y x isHorizontal kind length =
-    blockId := !blockId + 1;
+    g_blockIdSeq := !g_blockIdSeq + 1;
     {
-        _id = !blockId;
-        _y = y; _x = x; _isHorizontal = isHorizontal; _kind = kind; _length = length;
+        _id = !g_blockIdSeq;
+        _y = y; _x = x; _isHorizontal = isHorizontal;
+        _kind = kind; _length = length;
     }
 
-let detectHorizontalSpan y x blocks tiles borders isTileKnown marker =
+let detectHorizontalSpan y x tiles borders isTileKnown =
+    let msg = match tiles.(y).(x) with
+    | Prisoner -> " (prisoner)"
+    | _ -> "" in
     (* If a tile has white on top and black on bottom,
        then it is part of a horizontal block *)
     let xend = ref (x+1) in
     (* Scan horizontally to find its end *)
     while   !xend < g_boardSize &&
-            borders.(2*y+1).(!xend) = Black &&
-            borders.(2*y).(!xend) = White do
+            borders.(y).(!xend)._topBorder = White &&
+            borders.(y).(!xend)._bottomBorder = Black do
         isTileKnown.(y).(!xend) <- true;
         xend := !xend + 1;
     done;
@@ -57,52 +137,47 @@ let detectHorizontalSpan y x blocks tiles borders isTileKnown marker =
     let length = !xend - x in
     if length = 4 then (
         (* ...in that case, emit two blocks of length 2 *)
-        Printf.printf "Horizontal blocks at %d,%d of length 2 %s\n" y x marker;
-        blocks := (make_block y (x+2) true tiles.(y).(x+2) 2) ::
-                  (make_block y x true tiles.(y).(x) 2) ::
-                  !blocks
+        if !g_debug then
+            Printf.printf
+                "Horizontal blocks at %d,%d of length 2 %s\n" y x msg;
+        [ (make_block y (x+2) true tiles.(y).(x+2) 2) ;
+          (make_block y x true tiles.(y).(x) 2) ]
     ) else (
         (* ... otherwise emit only one block *)
-        Printf.printf "Horizontal block at %d,%d of length %d %s\n" y x length marker;
-        blocks := (make_block y x true tiles.(y).(x) length) :: !blocks
+        if !g_debug then
+            Printf.printf
+                "Horizontal block  at %d,%d of length %d %s\n" y x length msg;
+        [ (make_block y x true tiles.(y).(x) length) ]
     )
 
-
-let detectVerticalSpan y x blocks tiles borders isTileKnown marker =
+let detectVerticalSpan y x tiles borders isTileKnown =
     (* If a tile has white on top, but no black
        on bottom, then it is part of a vertical block. *)
     let yend = ref (y+1) in
     (* Scan vertically to find its end *)
-    while !yend<g_boardSize && borders.(2* !yend+1).(x) <> Black
+    while !yend<g_boardSize && borders.(!yend).(x)._bottomBorder <> Black
     do
         isTileKnown.(!yend).(x) <- true;
         yend := !yend + 1;
     done;
     let length = !yend - y + 1 in
-    Printf.printf "Vertical   block at %d,%d of length %d\n" y x length;
-    blocks :=
-        make_block y x false tiles.(y).(x) length ::
-        !blocks
+    if !g_debug then
+        Printf.printf "Vertical   block  at %d,%d of length %d\n" y x length;
+    [ ( make_block y x false tiles.(y).(x) length ) ]
 
-
-let detectSpans y x blocks tiles borders isTileKnown =
-    let marker = match tiles.(y).(x) with
-    | Prisoner -> " (marker)"
-    | _ -> "" in
+let detectBlockSpans y x tiles borders isTileKnown =
     (* Use the border information *)
-    match borders.(2*y).(x), borders.(2*y+1).(x) with
+    match borders.(y).(x)._topBorder, borders.(y).(x)._bottomBorder with
     | White, Black ->
-        detectHorizontalSpan y x blocks tiles borders isTileKnown marker
+        detectHorizontalSpan y x tiles borders isTileKnown
     | White, _ ->
-        detectVerticalSpan y x blocks tiles borders isTileKnown marker
+        detectVerticalSpan y x tiles borders isTileKnown
     | _, _ ->
-        ()
-    ;
-    ()
+        []
 
 (* This function (called at startup) scans the tiles and borders
  * arrays, and understands where the blocks are.
- * It then returns a list of the detected Blocks *)
+ * It then returns a list of the detected blocks *)
 let scanBodiesAndBordersAndEmitStartingBlockPositions tiles borders =
     let blocks = ref [] in
     (* Initially, we don't have a clue what each tile has *)
@@ -114,101 +189,38 @@ let scanBodiesAndBordersAndEmitStartingBlockPositions tiles borders =
                 match isTileKnown.(y).(x) , tiles.(y).(x) with
                 | true, _ ->
                     (* Skip over known tiles *)
-                    ();
+                    ()
                 | false, Empty ->
                     (* Skip over empty tiles *)
                     isTileKnown.(y).(x) <- true
                 | false, _ ->
                     isTileKnown.(y).(x) <- true;
-                    detectSpans y x blocks tiles borders isTileKnown
+                    blocks :=
+                        List.append
+                            (detectBlockSpans y x tiles borders isTileKnown)
+                            !blocks
             done
         done ;
         allDone := true ;
         for y=0 to pred g_boardSize do
             for x=0 to pred g_boardSize do
-                allDone := !allDone && isTileKnown.(y).(x);
+                allDone := !allDone && isTileKnown.(y).(x)
             done
-        done ;
+        done
     done ;
     List.rev !blocks
 
-
-(* This function looks at the center pixel of each tile,
-   and guesses what TileKind it is.
-   (Heuristics on the snapshots taken from my iPhone) *)
-let detectTileBodies all_channels =
-    Printf.printf "Detecting tile bodies...\n";
-    let tiles = Array.make_matrix g_boardSize g_boardSize Empty in
-    for y=0 to pred g_boardSize do
-        for x=0 to pred g_boardSize do
-            let line = 145 + y*50 in
-            let column = 34 + x*50 in
-            (* The red channel, surprisingly, was not necessary *)
-            let g = all_channels.{1,column,line} in
-            let b = all_channels.{2,column,line} in
-            if (b > 30) then
-                tiles.(y).(x) <- Empty
-            else if (g < 30) then
-                tiles.(y).(x) <- Prisoner
-            else
-                tiles.(y).(x) <- Block;
-        done;
-    done;
-    tiles
-
-let printTiles tiles borders =
-    let printBorder = function
-        | NotBorder -> Printf.printf "       ";
-        | White     -> Printf.printf "------ ";
-        | Black     -> Printf.printf "====== " in
-    let printBlock = function
-        | Empty    -> Printf.printf "       ";
-        | Block    -> Printf.printf "OOOOOO ";
-        | Prisoner -> Printf.printf "XXXXXX " in
-    for y=0 to pred g_boardSize do
-        for x=0 to pred g_boardSize do printBorder borders.(2*y).(x) done;
-        Printf.printf "\n";
-        for x=0 to pred g_boardSize do printBlock tiles.(y).(x) done;
-        Printf.printf "\n";
-        for x=0 to pred g_boardSize do printBorder borders.(2*y+1).(x) done;
-        Printf.printf "\n"
-    done;
-    Printf.printf "\n"
-
-
-let detectTopAndBottomTileBorders all_channels =
-    let borders = Array.make_matrix (2*g_boardSize) g_boardSize NotBorder in
-    Printf.printf "Detecting top and bottom tile borders...\n\n";
-    for y=0 to pred g_boardSize do
-        for x=0 to pred g_boardSize do
-            let line    = 145 + y*50 in
-            let column  =  34 + x*50 in
-            let ytop    = line - 23 in
-            let ybottom = line + 23 in
-            let r = all_channels.{0,column,ytop} in
-            let g = all_channels.{1,column,ytop} in
-            if       r > 200 && g > 160  then borders.(y*2).(x) <- White
-            else if  r < 40 && g < 30    then borders.(y*2).(x) <- Black
-            else                              borders.(y*2).(x) <- NotBorder;
-            let r = all_channels.{0,column,ybottom} in
-            let g = all_channels.{1,column,ybottom} in
-            if       r > 200 && g > 160  then borders.(y*2+1).(x) <- White
-            else if  r < 40 && g < 30    then borders.(y*2+1).(x) <- Black
-            else                              borders.(y*2+1).(x) <- NotBorder;
-        done
-    done;
-    borders
-
-
-(* A board is indeed represented as a list of Blocks.
- * However, when we move Blocks around, we need to be able
+(* A board is represented as a list of blocks.
+ * However, when we move blocks around, we need to be able
  * to detect if a tile is empty or not - so a 2D representation
  * (for quick tile access) is required. *)
 type board = {
     _data : tileKind array array;
 }
 let make_board listOfBlocks =
-    let brd = { _data = Array.make_matrix g_boardSize g_boardSize Empty; } in
+    let brd = {
+        _data = Array.make_matrix g_boardSize g_boardSize Empty;
+    } in
     List.iter (fun blk ->
         if blk._isHorizontal then
             for i=0 to pred blk._length do
@@ -255,45 +267,54 @@ let printBoard listOfBlocks =
 (* When we find the solution, we also need to backtrack
  * to display the moves we used to get there...
  *
- * "Move" stores what block moved and to what direction *)
-type direction =
-    Left
-    | Right
-    | Up
-    | Down
-
+ * "move" stores what block moved and in what direction *)
+type direction = Left | Right | Up | Down
 type move = {
     _blockId: int;
     _direction: direction;
 }
 
-let ( |> ) x fn = fn x
-
+(* find the possible moves a block can do, and return
+ * a list of tuples: (newBlock, move)   *)
 let findBlockMoves board b =
-    let alternatives = ref [] in
-    if b._isHorizontal then (
-        (*  Can the b move to the left? *)
-        if b._x>0 && Empty = board._data.(b._y).(b._x-1) then
-            alternatives := ({b with _x=b._x-1},{_blockId=b._id; _direction=Left}) :: !alternatives;
-        (*  Can the b move to the right? *)
-        if b._x+b._length<g_boardSize && Empty = board._data.(b._y).(b._x+b._length) then
-            alternatives := ({b with _x=b._x+1}, {_blockId=b._id; _direction=Right}) :: !alternatives
-    ) else (
-        (*  Can the b move up? *)
-        if b._y>0 && Empty = board._data.(b._y-1).(b._x) then
-            alternatives := ({b with _y=b._y-1}, {_blockId=b._id; _direction=Up}) :: !alternatives;
-        (*  Can the b move down? *)
-        if b._y+b._length<g_boardSize && Empty = board._data.(b._y+b._length).(b._x) then
-            alternatives := ({b with _y=b._y+1}, {_blockId=b._id; _direction=Down}) :: !alternatives
-    );
-    List.rev !alternatives
+    let myConcat a b =
+        match a, b with
+        | [], [] -> []
+        | x , [] -> x
+        | [], y  -> y
+        | x,  y  -> List.append y x in
+    let isEmptyTile dx dy dir =
+        let tileToCheckCoord v dv = match dv with
+        | 0          -> v
+        | x when x<0 -> v + dv
+        | _          -> v + b._length in
+        let tx = tileToCheckCoord b._x dx in
+        let ty = tileToCheckCoord b._y dy in
+        if tx>=0 && tx<g_boardSize && ty>=0 && ty<g_boardSize &&
+            Empty = board._data.(ty).(tx)
+            then [ ({ b with _x=b._x+dx; _y=b._y+dy },
+                    { _blockId=b._id; _direction=dir}) ]
+            else []
+        in
+    if b._isHorizontal then
+        myConcat
+            (*  Can the block move to the left? *)
+            (isEmptyTile (-1) 0 Left)
+            (*  Can the block move to the right? *)
+            (isEmptyTile 1 0 Right)
+    else
+        myConcat
+            (*  Can the block move up? *)
+            (isEmptyTile 0 (-1) Up)
+            (*  Can the block move down? *)
+            (isEmptyTile 0 1 Down)
 
 (* The brains of the operation - basically a Breadth-First-Search
- * of the problem space:
- *     http://en.wikipedia.org/wiki/Breadth-first_search
- *)
+   of the problem space:
+       http://en.wikipedia.org/wiki/Breadth-first_search *)
 let solveBoard listOfBlocks =
-    Printf.printf "\nSearching for a solution...\n";
+    if !g_debug then
+        print_endline "\nSearching for a solution...";
     (* We need to store the last move that got us to a specific *)
     (*  board state - that way we can backtrack from a final board *)
     (*  state to the list of moves we used to achieve it. *)
@@ -301,7 +322,9 @@ let solveBoard listOfBlocks =
     (*  Start by storing a "sentinel" value, for the initial board *)
     (*  state - we used no Move to achieve it, so store a block id *)
     (*  of -1 to mark it: *)
-    Hashtbl.add previousMoves (make_board listOfBlocks) {_blockId= -1; _direction=Left};
+    Hashtbl.add previousMoves
+        (make_board listOfBlocks)
+        {_blockId= -1; _direction=Left};
     (*  We must not revisit board states we have already examined, *)
     (*  so we need a 'visited' set: *)
     let visited = Hashtbl.create 100000 in
@@ -311,17 +334,13 @@ let solveBoard listOfBlocks =
     let queue = Queue.create () in
     (*  Start with our initial board state *)
     Queue.add listOfBlocks queue;
-
     while not (Queue.is_empty queue) do
         (*  Extract first element of the queue *)
         let blocks = Queue.take queue in
         (*  Create a Board for fast 2D access to tile state *)
         let board = make_board blocks in
         (*  Have we seen this board before? *)
-        if Hashtbl.mem visited board then
-            (*  Yep - skip it *)
-            ()
-        else (
+        if not (Hashtbl.mem visited board) then (
             (*  No, we haven't - store it so we avoid re-doing *)
             (*  the following work again in the future... *)
             Hashtbl.add visited board 1;
@@ -331,21 +350,21 @@ let solveBoard listOfBlocks =
             (*  Can he escape? Check to his right! *)
             let allClear = ref true in
             for x=it._x+it._length to pred g_boardSize do
-                allClear := !allClear && Empty = board._data.(it._y).( x);
+                allClear := !allClear && Empty = board._data.(it._y).( x)
             done;
             if !allClear then (
                 (*  Yes, he can escape - we did it! *)
-                Printf.printf "Solved!\n";
+                print_endline "Solved!";
                 (*  To print the Moves we used in normal order, we will *)
-                (*  backtrack through the board states to print *)
-                (*  the Move we used at each one... *)
+                (*  backtrack through the board states to store in a Stack *)
+                (*  the Move we used at each step... *)
                 let solution = Stack.create () in
                 Stack.push blocks solution;
                 let currentBoard = ref board in
                 let currentBlocks = ref blocks in
                 let foundSentinel = ref false in
-                let hack = Hashtbl.create 1000 in
-                while not !foundSentinel && Hashtbl.mem previousMoves !currentBoard do
+                while not !foundSentinel &&
+                        Hashtbl.mem previousMoves !currentBoard do
                     let itMove = Hashtbl.find previousMoves !currentBoard in
                     if itMove._blockId = -1 then
                         (*  Sentinel - reached starting board *)
@@ -366,59 +385,67 @@ let solveBoard listOfBlocks =
                         (*  Add this board to the front of the list... *)
                         currentBlocks := backStep;
                         Stack.push !currentBlocks solution;
-                        currentBoard := make_board backStep;
-                        if Hashtbl.mem hack !currentBoard then
-                            foundSentinel := true
-                        else
-                            Hashtbl.add hack !currentBoard 1
+                        currentBoard := make_board backStep
                     )
                 done;
-                (*  Now that we have the full list, emit it in order *)
+                (*  Now that we have the moves, emit them in order *)
                 solution |> Stack.iter (fun listOfBlocks -> (
                     printBoard listOfBlocks;
                     print_endline "Press ENTER to see next move";
                     let dummy = input_line stdin in
-                    print_endline ""))
+                    print_endline dummy))
                 ;
-                Printf.printf "Run free, prisoner, run! :-)\n";
+                print_endline "Run free, prisoner, run! :-)";
                 exit 0;
             ) else (
                 (*  Nope, the prisoner is still trapped. *)
                 (*  *)
                 (*  Add all potential states arrising from immediate *)
                 (*  possible moves to the end of the queue. *)
-
+                if !g_debug then (
+                    print_endline "Creating moves for this:";
+                    printBoard blocks);
                 let arrayOfBlocks = Array.of_list blocks in
                 for i=0 to pred (Array.length arrayOfBlocks) do
                     let oldBlock = arrayOfBlocks.(i) in
-                    findBlockMoves board oldBlock |>
-                        List.iter (fun (block, move) ->
+                    let moves = findBlockMoves board oldBlock in
+                    if !g_debug && 0 <> List.length moves then
+                        Printf.printf
+                            "Block %d: %d moves\n" oldBlock._id
+                            (List.length moves);
+                    moves |> List.iter (
+                        fun (block, move) ->
                             arrayOfBlocks.(i) <- block ;
-                            (* Add to the end of the queue for further study :-) *)
-                            let newListOfBlocks = Array.to_list arrayOfBlocks in
+                            (* Add to the end of the queue *)
+                            let newListOfBlocks = Array.to_list arrayOfBlocks
+                            in
                             let newBoard = make_board newListOfBlocks in
                             if not (Hashtbl.mem visited newBoard) then (
                                 Queue.add newListOfBlocks queue;
-                                (* Store board and move, so we can backtrack later *)
-                                Hashtbl.add previousMoves newBoard move; (*
-                                let msg = match move._direction with
-                                | Left -> "Left"
-                                | Right -> "Right"
-                                | Up -> "Up"
-                                | Down -> "Down" in
-                                Printf.printf "Block %c moved %s generates this:\n" (Char.chr (65 + block._id)) msg;
-                                printBoard newListOfBlocks; *)
+                                (* Store board,move - so we can backtrack *)
+                                Hashtbl.add previousMoves newBoard move;
+                                if !g_debug then (
+                                    let msg = match move._direction with
+                                    | Left -> "Left"
+                                    | Right -> "Right"
+                                    | Up -> "Up"
+                                    | Down -> "Down" in
+                                    Printf.printf
+                                        "Moving %c %s generates this:\n"
+                                        (Char.chr (65 + block._id)) msg;
+                                    printBoard newListOfBlocks;
+                                )
                             )
                         )
                     ;
                     arrayOfBlocks.(i) <- oldBlock
-                done;
-            );
+                done
+            )
         )
         (*  and go recheck the queue, from the top! *)
     done
 
-let _ =
+let parseImageData =
     let ic = open_in "data.rgb" in
     let all_channels =
         let kind = Bigarray.int8_unsigned
@@ -437,6 +464,22 @@ let _ =
     close_in ic;
     let tiles = detectTileBodies all_channels in
     let borders = detectTopAndBottomTileBorders all_channels in
-    printTiles tiles borders;
-    let listOfBlocks = scanBodiesAndBordersAndEmitStartingBlockPositions tiles borders in
+    tiles, borders
+
+let _ =
+    (* let any = List.fold_left (||) false
+     * ..is slower than ... *)
+    let rec any l =
+        match l with
+        | []        -> false
+        | true::xs  -> true
+        | false::xs -> any xs in
+    let inArgs args str =
+        any(Array.to_list (Array.map (fun x -> (x = str)) args)) in
+    g_debug := inArgs Sys.argv "-debug" ;
+    let tiles, borders = parseImageData in
+    if !g_debug then
+        printTiles tiles borders;
+    let listOfBlocks =
+        scanBodiesAndBordersAndEmitStartingBlockPositions tiles borders in
     solveBoard listOfBlocks
