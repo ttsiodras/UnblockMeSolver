@@ -33,5 +33,8 @@ test: data.rgb | $(TARGETCPP)
 data.rgb:	IMG_0354.PNG
 	convert $< $@
 
+cross:
+	arm-apple-darwin-g++ -DNDEBUG Unblock-solve.cc -o Unblock-iOS
+
 clean:
 	rm -f $(TARGETCPP) $(TARGETCPP11) $(TARGETOCAML) data.rgb  Unblock.cm? Unblock.o
