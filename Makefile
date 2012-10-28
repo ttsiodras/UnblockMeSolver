@@ -23,7 +23,7 @@ $(TARGETCPP11):	$(TARGETCPP11).cc
 	$(CXX) -std=c++0x -o $@ $(CXXFLAGS) $<
 
 $(TARGETOCAML):	$(TARGETOCAML).ml
-	ocamlopt -o ./$@ bigarray.cmxa $<
+	ocamlopt -annot -o ./$@ bigarray.cmxa $<
 	#ocamlopt -unsafe -rectypes -inline 1000 -o ./$@ common.ml $<
 
 test: data.rgb | $(TARGETCPP)
