@@ -212,7 +212,7 @@ let make_board listOfBlocks =
     let brd = {
         _data = Array.make_matrix g_boardSize g_boardSize Empty;
     } in
-    List.iter (fun blk ->
+    listOfBlocks |> List.iter (fun blk ->
         if blk._isHorizontal then
             for i=0 to pred blk._length do
                 brd._data.(blk._y).(blk._x+i) <- blk._kind
@@ -220,14 +220,14 @@ let make_board listOfBlocks =
         else
             for i=0 to pred blk._length do
                 brd._data.(blk._y+i).(blk._x) <- blk._kind
-            done) listOfBlocks;
+            done);
     brd
 
 (* This function pretty-prints a list of blocks *)
 let printBoard listOfBlocks =
     (* start from an empty buffer *)
     let tmp = Array.make_matrix g_boardSize g_boardSize ' ' in
-    List.iter (fun blk ->
+    listOfBlocks |> List.iter (fun blk ->
         (* character emitted for this tile *)
         let c = match blk._kind with
         | Empty -> ' '
@@ -244,7 +244,7 @@ let printBoard listOfBlocks =
             for i=0 to pred blk._length do
                 tmp.(blk._y+i).(blk._x) <- c
             done
-        ) listOfBlocks;
+        );
     Printf.printf "+------------------+\n|";
     for y=0 to pred g_boardSize do
         for x=0 to pred g_boardSize do
