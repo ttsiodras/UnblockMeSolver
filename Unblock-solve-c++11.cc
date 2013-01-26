@@ -160,6 +160,8 @@ void printBoard(const list<Block>& blocks)
         case TileKind::block:
             c = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[block._id];
             break;
+        default:
+            assert(0);
         }
         if (block._isHorizontal)
             for(int i=0; i<block._length; i++)

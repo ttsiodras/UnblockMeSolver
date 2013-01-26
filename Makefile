@@ -22,7 +22,7 @@ $(TARGETCPP): $(TARGETCPP).cc
 	$(CXX) -O3 -o $@ $(CXXFLAGS) $<
 
 $(TARGETCPP11):	$(TARGETCPP11).cc
-	$(CXX) -std=c++0x -o $@ $(CXXFLAGS) $<
+	$(CXX) -O3 -std=c++0x -o $@ $(CXXFLAGS) $<
 
 $(TARGETOCAML):	$(TARGETOCAML).ml
 	ocamlopt -annot -o ./$@ bigarray.cmxa $<
@@ -37,6 +37,9 @@ data.rgb:	IMG_0354.PNG
 
 cross:
 	arm-apple-darwin-g++ -DNDEBUG Unblock-solve.cc -o Unblock-iOS
+
+benchmark:
+	./bench.sh
 
 clean:
 	rm -f $(TARGETCPP) $(TARGETCPP11) $(TARGETOCAML) data.rgb  Unblock.cm? Unblock.o
