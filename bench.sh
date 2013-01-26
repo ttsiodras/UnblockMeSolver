@@ -10,9 +10,9 @@ else
     fi
 fi
 declare -A langs
-langs[CPlusPlus]=Unblock-solve
-langs[CPlusPlus11]=Unblock-solve-c++11
-langs[OCaml]=Unblock
+langs["C++"]=Unblock-solve
+langs["C++11"]=Unblock-solve-c++11
+langs["OCaml"]=Unblock
 for lang in "${!langs[@]}" ; do
     binary=${langs[$lang]}
     echo "Benchmarking $lang ..."

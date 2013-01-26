@@ -38,8 +38,8 @@ data.rgb:	IMG_0354.PNG
 cross:
 	arm-apple-darwin-g++ -DNDEBUG Unblock-solve.cc -o Unblock-iOS
 
-benchmark:
-	./bench.sh
+benchmark:	world
+	@./bench.sh
 
 clean:
 	rm -f $(TARGETCPP) $(TARGETCPP11) $(TARGETOCAML) data.rgb  Unblock.cm? Unblock.o
