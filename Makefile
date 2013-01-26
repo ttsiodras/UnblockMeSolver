@@ -16,6 +16,8 @@ TARGETOCAML=Unblock
 
 all:	$(TARGETCPP)
 
+world:	$(TARGETCPP) $(TARGETCPP11) $(TARGETOCAML)
+
 $(TARGETCPP): $(TARGETCPP).cc
 	$(CXX) -O3 -o $@ $(CXXFLAGS) $<
 

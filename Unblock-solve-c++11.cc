@@ -50,6 +50,9 @@ struct Block {
         _id(BlockId++), _y(y), _x(x), _isHorizontal(isHorizontal),
         _kind(kind), _length(length)
         {}
+    // Since _id, _y and _x fit in 8 bits,
+    // a Block hash can be easily obtained via plain shifts:
+    unsigned hash() { return _id | (_y << 8) | (_x << 16); }
 };
 int Block::BlockId = 0;
 
@@ -138,42 +141,6 @@ list<Block> ScanBodiesAndBordersAndEmitStartingBlockPositions()
     return blocks;
 }
 
-// A board is indeed represented as a list of Blocks.
-// However, when we move Blocks around, we need to be able
-// to detect if a tile is empty or not - so a 2D representation
-// (for quick tile access) is required.
-struct Board {
-    TileKind _data[SIZE*SIZE];
-    // 2D access operator
-    // i.e. instead of 'arr[y][x]' you do 'arr(y,x)'
-    inline TileKind& operator()(int y, int x) {
-        return _data[y*SIZE+x];
-    }
-    // This type is also used in both sets and maps as a key -
-    // so it has a comparison operator.
-    bool operator<(const Board& r) const {
-        return memcmp(_data, r._data, sizeof(_data))<0;
-    }
-    // Initial state: set all tiles to empty
-    Board() { memset(&_data, empty, sizeof(_data)); }
-};
-
-// This function takes a list of blocks, and 'renders' them
-// into a Board - for quick tile access.
-Board renderBlocks(list<Block>& blocks)
-{
-    Board tmp;
-    for(auto& p: blocks) {
-        if (p._isHorizontal)
-            for(int i=0; i<p._length; i++)
-                tmp(p._y, p._x+i) = p._kind;
-        else
-            for(int i=0; i<p._length; i++)
-                tmp(p._y+i, p._x) = p._kind;
-    }
-    return tmp;
-}
-
 // This function pretty-prints a list of blocks
 void printBoard(const list<Block>& blocks)
 {
@@ -212,6 +179,73 @@ void printBoard(const list<Block>& blocks)
         }
     }
     cout << "\b+------------------+\n";
+}
+
+// A board is indeed represented as a list of Blocks.
+// However, when we move Blocks around, we need to be able
+// to detect if a tile is empty or not - so a 2D representation
+// (for quick tile access) is required.
+struct Board {
+    TileKind _data[SIZE*SIZE];
+
+    // UPDATE, Jan 26, 2013:
+    // Connor Duggan correctly reported that just using tile state
+    // is not enough to represent a board - what if we have a different
+    // arrangement of vertical and horizontal blocks that cover
+    // the same tiles?  e.g.
+    //
+    //             AA AA          AA BB
+    //             BB BB    vs    AA BB
+    //
+    // if we just compare tile data, the two boards will seem identical
+    // when we check the 'visited' set in the main loop - but they aren't!
+    //
+    // We therefore store a hash per block, formed by combining the
+    // block index, and the block coordinates (simple shifts, since
+    // all 3 numbers easily fit in 8 bits - see Block::hash() above)
+    //
+    // How much space to reserve for these hashes? Since blocks are
+    // at least 2-tile sized:
+    unsigned _hashes[SIZE*SIZE/2];
+
+    // 2D access operator
+    // i.e. instead of 'arr[y][x]' you do 'arr(y,x)'
+    inline TileKind& operator()(int y, int x) {
+        return _data[y*SIZE+x];
+    }
+    // This type is also used in both sets and maps as a key -
+    // so it needs a comparison operator. Using the block
+    // _hashes instead of the tile _data, we avoid misidentifying
+    // a board state as identical when different block arrangements
+    // end up covering the same tiles.
+    bool operator<(const Board& r) const {
+        return memcmp(_hashes, r._hashes, sizeof(_hashes)) < 0;
+    }
+    // Initial state: set all tiles to empty
+    Board() {
+        memset(&_data, empty, sizeof(_data));
+        memset(&_hashes, 0, sizeof(_hashes));
+    }
+};
+
+// This function takes a list of blocks, and 'renders' them
+// into a Board - for quick tile access. It also stores
+// the block hashes into the Board.
+Board renderBlocks(list<Block>& blocks)
+{
+    unsigned idx=0;
+    Board tmp;
+    for(auto& p: blocks) {
+        if (p._isHorizontal)
+            for(int i=0; i<p._length; i++)
+                tmp(p._y, p._x+i) = p._kind;
+        else
+            for(int i=0; i<p._length; i++)
+                tmp(p._y+i, p._x) = p._kind;
+        assert(idx < SIZE*SIZE/2);
+        tmp._hashes[idx++] = p.hash();
+    }
+    return tmp;
 }
 
 // When we find the solution, we also need to backtrack
@@ -259,16 +293,30 @@ void SolveBoard(list<Block>& blocks)
 
     // Now, to implement Breadth First Search, all we need is a Queue
     // storing the states we need to investigate - so it needs to
-    // be a list of board states... i.e. a list of list of Blocks!
-    list< list<Block> > queue;
+    // be a list of board states... We'll also be maintaining
+    // the depth we traversed to reach this board state, so we use
+    // a pair of int (depth) and list of blocks (state).
+    typedef pair<int, list<Block> > DepthAndStateTuple;
+    list<DepthAndStateTuple> queue;
 
-    // Start with our initial board state
-    queue.push_back(blocks);
+    // Start with our initial board state, and playedMoveDepth set to 1
+    queue.push_back(DepthAndStateTuple(1, blocks));
+    int oldLevel = 0;
+    cout << "Depth searched:   " << oldLevel;
+
     while(!queue.empty()) {
 
         // Extract first element of the queue
-        auto blocks = *queue.begin();
+        auto qtop = *queue.begin();
+        auto level = qtop.first;
+        auto blocks = qtop.second;
         queue.pop_front();
+
+        // Report depth increase when it happens
+        if (level > oldLevel) {
+            cout << "\b\b\b"; cout.width(3); cout << level; cout.flush();
+            oldLevel = level;
+        }
 
         // Create a Board for fast 2D access to tile state
         Board board = renderBlocks(blocks);
@@ -297,7 +345,7 @@ void SolveBoard(list<Block>& blocks)
         }
         if (allClear) {
             // Yes, he can escape - we did it!
-            cout << "Solved!\n";
+            cout << "\n\nSolved!\n";
 
             // To print the Moves we used in normal order, we will
             // backtrack through the board states to print
@@ -347,16 +395,16 @@ void SolveBoard(list<Block>& blocks)
         for(auto& block: blocks) {
 
 #define COMMON_BODY(direction) \
-    auto copiedBlocks = copyBlocks(blocks);                   \
-    auto candidateBoard = renderBlocks(copiedBlocks);         \
-    if (visited.find(candidateBoard) == visited.end()) {      \
-        /* Add to the end of the queue for further study */   \
-        queue.push_back(copiedBlocks);                        \
-        /* Store board and move, so we can backtrack later */ \
-        previousMoves.insert(                                 \
-            pair<Board,Move>(                                 \
-                candidateBoard,                               \
-                Move(block._id, Move::direction)));           \
+    auto copiedBlocks = copyBlocks(blocks);                         \
+    auto candidateBoard = renderBlocks(copiedBlocks);               \
+    if (visited.find(candidateBoard) == visited.end()) {            \
+        /* Add to the end of the queue for further study */         \
+        queue.push_back(DepthAndStateTuple(level+1, copiedBlocks)); \
+        /* Store board and move, so we can backtrack later */       \
+        previousMoves.insert(                                       \
+            pair<Board,Move>(                                       \
+                candidateBoard,                                     \
+                Move(block._id, Move::direction)));                 \
     }
 
             if (block._isHorizontal) {
