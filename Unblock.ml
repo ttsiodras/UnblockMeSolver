@@ -206,13 +206,19 @@ let scanBodiesAndBordersAndEmitStartingBlockPositions tiles borders =
  * to detect if a tile is empty or not - so a 2D representation
  * (for quick tile access) is required. *)
 type board = {
-    _data : tileKind array array;
+    _data   : tileKind array array;
+    mutable _hashes : int list;
 }
 let make_board listOfBlocks =
     let brd = {
         _data = Array.make_matrix g_boardSize g_boardSize Empty;
+        _hashes = [];
     } in
-    listOfBlocks |> List.iter (fun blk ->
+    let hash_block block =
+        block._id lor (block._y lsl 8) lor (block._x lsl 16)
+    in
+    listOfBlocks |> List.iter (fun blk -> (
+        brd._hashes <- (hash_block blk) :: brd._hashes ;
         if blk._isHorizontal then
             for i=0 to pred blk._length do
                 brd._data.(blk._y).(blk._x+i) <- blk._kind
@@ -220,7 +226,7 @@ let make_board listOfBlocks =
         else
             for i=0 to pred blk._length do
                 brd._data.(blk._y+i).(blk._x) <- blk._kind
-            done);
+            done));
     brd
 
 (* This function pretty-prints a list of blocks *)
@@ -304,8 +310,7 @@ let findBlockMoves board b =
    of the problem space:
        http://en.wikipedia.org/wiki/Breadth-first_search *)
 let solveBoard listOfBlocks =
-    if !g_debug then
-        print_endline "\nSearching for a solution...";
+    print_string "\nSearching for a solution...\nDepth reached:     ";
     (* We need to store the last move that got us to a specific *)
     (*  board state - that way we can backtrack from a final board *)
     (*  state to the list of moves we used to achieve it. *)
@@ -324,10 +329,15 @@ let solveBoard listOfBlocks =
     (*  be a list of board states... i.e. a list of list of Blocks! *)
     let queue = Queue.create () in
     (*  Start with our initial board state *)
-    Queue.add listOfBlocks queue;
+    Queue.add (1, listOfBlocks) queue;
+    let currentLevel = ref 0 in
     while not (Queue.is_empty queue) do
         (*  Extract first element of the queue *)
-        let blocks = Queue.take queue in
+        let level, blocks = Queue.take queue in
+        if level > !currentLevel then (
+            currentLevel := level ;
+            Printf.printf "\b\b\b%3d%!" level;
+        );
         (*  Create a Board for fast 2D access to tile state *)
         let board = make_board blocks in
         (*  Have we seen this board before? *)
@@ -345,7 +355,7 @@ let solveBoard listOfBlocks =
             done;
             if !allClear then (
                 (*  Yes, he can escape - we did it! *)
-                print_endline "Solved!";
+                print_endline "\n\nSolved!";
                 (*  To print the Moves we used in normal order, we will *)
                 (*  backtrack through the board states to store in a Stack *)
                 (*  the Move we used at each step... *)
@@ -412,7 +422,7 @@ let solveBoard listOfBlocks =
                             in
                             let newBoard = make_board newListOfBlocks in
                             if not (Hashtbl.mem visited newBoard) then (
-                                Queue.add newListOfBlocks queue;
+                                Queue.add (level+1, newListOfBlocks) queue;
                                 (* Store board,move - so we can backtrack *)
                                 Hashtbl.add previousMoves newBoard move;
                                 if !g_debug then (
