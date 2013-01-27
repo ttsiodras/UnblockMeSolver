@@ -256,9 +256,11 @@ Board renderBlocks(list<Block>& blocks)
 // "Move" stores what block moved and to what direction
 struct Move {
     int _blockId;
+    int _distance;
     enum Direction {left, right, up, down} _move;
-    Move(int blockID, Direction d):
+    Move(int blockID, Direction d, int steps):
         _blockId(blockID),
+        _distance(steps),
         _move(d) {}
 };
 
@@ -287,7 +289,7 @@ void SolveBoard(list<Block>& blocks)
     // state - we used no Move to achieve it, so store a block id
     // of -1 to mark it:
     previousMoves.insert(
-        pair<Board,Move>(renderBlocks(blocks), Move(-1, Move::left)));
+        pair<Board,Move>(renderBlocks(blocks), Move(-1, Move::left, 1)));
 
     // We must not revisit board states we have already examined,
     // so we need a 'visited' set:
@@ -369,10 +371,14 @@ void SolveBoard(list<Block>& blocks)
                 assert(it != blocks.end());
 
                 switch(itMove->second._move) {
-                case Move::left:  it->_x++; break;
-                case Move::right: it->_x--; break;
-                case Move::up:    it->_y++; break;
-                case Move::down:  it->_y--; break;
+                case Move::left:
+                    it->_x+=itMove->second._distance; break;
+                case Move::right:
+                    it->_x-=itMove->second._distance; break;
+                case Move::up:
+                    it->_y+=itMove->second._distance; break;
+                case Move::down:
+                    it->_y-=itMove->second._distance; break;
                 }
 
                 // Add this board to the front of the list...
@@ -406,39 +412,51 @@ void SolveBoard(list<Block>& blocks)
         previousMoves.insert(                                       \
             pair<Board,Move>(                                       \
                 candidateBoard,                                     \
-                Move(block._id, Move::direction)));                 \
+                Move(block._id, Move::direction, distance)));       \
     }
 
             if (block._isHorizontal) {
                 // Can the block move to the left?
-                if (block._x>0 &&
-                        empty==board(block._y, block._x-1)) {
-                    block._x--;
-                    COMMON_BODY(left)
-                    block._x++;
+                int blockStartingX = block._x;
+                for(int distance=1; distance<SIZE; distance++) {
+                    int testX = blockStartingX-distance;
+                    if (testX>=0 && empty==board(block._y, testX)) {
+                        block._x = testX;
+                        COMMON_BODY(left)
+                    } else
+                        break;
                 }
                 // Can the block move to the right?
-                if (block._x+block._length<SIZE &&
-                        empty==board(block._y, block._x+block._length)) {
-                    block._x++;
-                    COMMON_BODY(right)
-                    block._x--;
+                for(int distance=1; distance<SIZE; distance++) {
+                    int testX = blockStartingX+distance-1+block._length;
+                    if (testX<SIZE && empty==board(block._y, testX)) {
+                        block._x = blockStartingX+distance;
+                        COMMON_BODY(right)
+                    } else
+                        break;
                 }
+                block._x = blockStartingX;
             } else {
                 // Can the block move up?
-                if (block._y>0 &&
-                        empty==board(block._y-1, block._x)) {
-                    block._y--;
-                    COMMON_BODY(up)
-                    block._y++;
+                int blockStartingY = block._y;
+                for(int distance=1; distance<SIZE; distance++) {
+                    int testY = blockStartingY-distance;
+                    if (testY>=0 && empty==board(testY, block._x)) {
+                        block._y = testY;
+                        COMMON_BODY(up)
+                    } else
+                        break;
                 }
                 // Can the block move down?
-                if (block._y+block._length<SIZE &&
-                        empty==board(block._y + block._length, block._x)) {
-                    block._y++;
-                    COMMON_BODY(down)
-                    block._y--;
+                for(int distance=1; distance<SIZE; distance++) {
+                    int testY = blockStartingY+distance-1+block._length;
+                    if (testY<SIZE && empty==board(testY, block._x)) {
+                        block._y = blockStartingY+distance;
+                        COMMON_BODY(down)
+                    } else
+                        break;
                 }
+                block._y = blockStartingY;
             }
         }
         // and go recheck the queue, from the top!
