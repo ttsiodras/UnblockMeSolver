@@ -25,8 +25,8 @@ $(TARGETCPP11):	$(TARGETCPP11).cc
 	$(CXX) -O3 -std=c++0x -o $@ $(CXXFLAGS) $<
 
 $(TARGETOCAML):	$(TARGETOCAML).ml
-	ocamlopt -annot -o ./$@ bigarray.cmxa $<
-	#ocamlopt -unsafe -rectypes -inline 1000 -o ./$@ common.ml $<
+	#ocamlopt -annot -o ./$@ bigarray.cmxa $<
+	ocamlopt -unsafe -rectypes -inline 1000 -o ./$@ bigarray.cmxa $<
 
 test: data.rgb | $(TARGETCPP)
 	display -size 320x480 -depth 8 data.rgb &
