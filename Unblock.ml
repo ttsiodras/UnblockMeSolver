@@ -373,29 +373,18 @@ let solveBoard listOfBlocks =
     (*  storing the states we need to investigate - so it needs to *)
     (*  be a list of board states... i.e. a list of list of Blocks! *)
     let queue = Queue.create () in
-    (*  Jumpstart the Q with initial board state and a dummy blockId *)
-    Queue.add (1, -1, dummyMove, listOfBlocks) queue;
+    (*  Jumpstart the Q with initial board state and a dummy move *)
+    Queue.add (1, dummyMove, listOfBlocks) queue;
     let currentLevel = ref 0 in
     while not (Queue.is_empty queue) do
         (*  Extract first element of the queue *)
-        let level, idOfMovedBlock, move, blocksOld = Queue.take queue in
+        let level, move, blocks = Queue.take queue in
         if level > !currentLevel then (
             currentLevel := level ;
             if not !g_debug then
                 Printf.printf "\b\b\b%3d%!" level;
         );
-        let blocks = blocksOld |> List.map (fun b ->
-            if b._id = idOfMovedBlock then (
-                match move._direction with
-                | Left  -> {b with _x = b._x-move._steps }
-                | Right -> {b with _x = b._x+move._steps }
-                | Up    -> {b with _y = b._y-move._steps }
-                | Down  -> {b with _y = b._y+move._steps }
-            ) else
-                b) in
         let newBoard = make_board blocks in
-        (* Store board,level,move - so we can backtrack *)
-        Hashtbl.replace previousMoves (newBoard, level) move;
         (*  Create a Board for fast 2D access to tile state *)
         let board = make_board blocks in
         (*  Have we seen this board before? *)
@@ -403,6 +392,8 @@ let solveBoard listOfBlocks =
             (*  No, we haven't - store it so we avoid re-doing *)
             (*  the following work again in the future... *)
             Hashtbl.add visited board 1;
+            (* Store board,level,move - so we can backtrack *)
+            Hashtbl.replace previousMoves (newBoard, level) move;
             (*  Check if this board state is a winning state: *)
             (*  Find prisoner block... *)
             let it = List.find (fun blk -> blk._kind = Prisoner) blocks in
@@ -485,7 +476,7 @@ let solveBoard listOfBlocks =
                             let newBoard = make_board newListOfBlocks in
                             if not (Hashtbl.mem visited newBoard) then (
                                 Queue.add
-                                    (level+1, block._id, move, blocks) queue;
+                                    (level+1, move, newListOfBlocks) queue;
                                 if !g_debug then (
                                     let msg = match move._direction with
                                     | Left -> "Left"
