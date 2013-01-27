@@ -12,6 +12,12 @@ let g_debug = ref false
 (* Very useful syntactic sugar *)
 let ( |> ) x fn = fn x
 
+(* This emulates the [X .. Y] construct of F# *)
+let (--) i j =
+    let rec aux n acc =
+        if n < i then acc else aux (n-1) (n :: acc)
+    in aux j []
+
 (* The tile "bodies" information - filled by detectTileBodies below,
    via heuristics on the center pixel of the tiles *)
 type tileKind = Empty | Block | Prisoner
@@ -268,49 +274,89 @@ let printBoard listOfBlocks =
 type direction = Left | Right | Up | Down
 type move = {
     _blockId: int;
+    _steps: int;
     _direction: direction;
 }
 
 (* find the possible moves a block can do, and return
  * a list of tuples: (newBlock, move)   *)
-let findBlockMoves board b =
-    let myConcat a b =
-        match a, b with
-        | [], [] -> []
-        | x , [] -> x
-        | [], y  -> y
-        | x,  y  -> List.append y x in
+let findBlockMoves board blk =
+    (* Left/right and up/down moves will be joined in a common list 
+     * but we don't want that final list to have invalid moves.
+     *
+     * In fact we want to crop each directional move list
+     * at the first None - i.e. at the first tile we found full
+     * via isEmptyTile in makeMove below.
+     *
+     * The reason is we emit moves with distances, where
+     * a single block can move e.g. 3 places to the left
+     * and we want the complete road to be empty, not just
+     * the target tile.
+     *
+     * Since we feed the scanning loop with jumps 
+     * from 1 to g_boardSize-1, we want to stop at the first
+     * full tile we find - cropAtFirstFullTile does this. *)
+    let rec cropAtFirstFullTile = function
+        | []   -> []
+        | x::xs ->
+            match x with
+            | None -> []   (* Crop here! *)
+            | Some x -> x :: (cropAtFirstFullTile xs)
+        in
+    (* check tile at distance (dx,dy) in direction dir *)
     let isEmptyTile dx dy dir =
         let tileToCheckCoord v dv = match dv with
         | 0          -> v
-        | x when x<0 -> v + dv
-        | _          -> v + b._length in
-        let tx = tileToCheckCoord b._x dx in
-        let ty = tileToCheckCoord b._y dy in
-        if tx>=0 && tx<g_boardSize && ty>=0 && ty<g_boardSize &&
-            Empty = board._data.(ty).(tx)
-            then [ ({ b with _x=b._x+dx; _y=b._y+dy },
-                    { _blockId=b._id; _direction=dir}) ]
-            else []
+        | d when d<0 -> v + dv
+        | _          -> v + blk._length + dv - 1 in
+        let tx = tileToCheckCoord blk._x dx in
+        let ty = tileToCheckCoord blk._y dy in
+        tx>=0 && tx<g_boardSize && ty>=0 && ty<g_boardSize &&
+            Empty = board._data.(ty).(tx) in
+    (* create a block*move tuple if the target tile is empty *)
+    let makeMove dx dy dir =
+        if isEmptyTile dx dy dir then
+            let steps = max (abs dx) (abs dy) in
+            Some ({ blk with _x=blk._x+dx; _y=blk._y+dy },
+             { _blockId=blk._id; _steps=steps; _direction=dir })
+        else
+            None
         in
-    if b._isHorizontal then
-        myConcat
-            (*  Can the block move to the left? *)
-            (isEmptyTile (-1) 0 Left)
-            (*  Can the block move to the right? *)
-            (isEmptyTile 1 0 Right)
+    (* Since we feed the scanning loop with jumps from 1 to 
+     * g_boardSize-1, we want to stop at the first full tile 
+     * we found - i.e. the complete road must be empty,
+     * not just the target tile!
+     *
+     * This is why we pipe the move list to cropAtFirstFullTile. *)
+    if blk._isHorizontal then
+        let leftMoves = 
+            1--(g_boardSize-1) |> List.map 
+               (fun distance -> makeMove (-distance) 0 Left) |>
+            cropAtFirstFullTile in
+        let rightMoves =
+            1--(g_boardSize-1) |> List.map 
+               (fun distance -> makeMove distance 0 Right) |>
+            cropAtFirstFullTile in
+        (* after the crop, we join the lists of moves *)
+        List.append leftMoves rightMoves
     else
-        myConcat
-            (*  Can the block move up? *)
-            (isEmptyTile 0 (-1) Up)
-            (*  Can the block move down? *)
-            (isEmptyTile 0 1 Down)
+        let upMoves =
+            1--(g_boardSize-1) |> List.map 
+                 (fun distance -> makeMove 0 (-distance) Up) |>
+            cropAtFirstFullTile in
+        let downMoves =
+            1--(g_boardSize-1) |> List.map 
+                 (fun distance -> makeMove 0 distance Down) |>
+            cropAtFirstFullTile in
+        List.append upMoves downMoves
 
 (* The brains of the operation - basically a Breadth-First-Search
    of the problem space:
        http://en.wikipedia.org/wiki/Breadth-first_search *)
 let solveBoard listOfBlocks =
-    print_string "\nSearching for a solution...\nDepth reached:     ";
+    print_string "\nSearching for a solution...\n";
+    if not !g_debug then
+        print_string "Depth reached:     ";
     (* We need to store the last move that got us to a specific *)
     (*  board state - that way we can backtrack from a final board *)
     (*  state to the list of moves we used to achieve it. *)
@@ -320,7 +366,7 @@ let solveBoard listOfBlocks =
     (*  of -1 to mark it: *)
     Hashtbl.add previousMoves
         (make_board listOfBlocks)
-        {_blockId= -1; _direction=Left};
+        {_blockId= -1; _direction=Left; _steps=0};
     (*  We must not revisit board states we have already examined, *)
     (*  so we need a 'visited' set: *)
     let visited = Hashtbl.create 100000 in
@@ -336,7 +382,8 @@ let solveBoard listOfBlocks =
         let level, blocks = Queue.take queue in
         if level > !currentLevel then (
             currentLevel := level ;
-            Printf.printf "\b\b\b%3d%!" level;
+            if not !g_debug then
+                Printf.printf "\b\b\b%3d%!" level;
         );
         (*  Create a Board for fast 2D access to tile state *)
         let board = make_board blocks in
@@ -374,15 +421,15 @@ let solveBoard listOfBlocks =
                         (*  Find the block we moved, and move it *)
                         (*  (in reverse direction - we are going back) *)
                         let backStep = !currentBlocks |>
-                            List.map (fun blk ->
-                            if blk._id = itMove._blockId then
+                            List.map (fun b ->
+                            if b._id = itMove._blockId then
                                 match itMove._direction with
-                                | Left  -> {blk with _x = blk._x+1 }
-                                | Right -> {blk with _x = blk._x-1 }
-                                | Up    -> {blk with _y = blk._y+1 }
-                                | Down  -> {blk with _y = blk._y-1 }
+                                | Left  -> {b with _x = b._x+itMove._steps }
+                                | Right -> {b with _x = b._x-itMove._steps }
+                                | Up    -> {b with _y = b._y+itMove._steps }
+                                | Down  -> {b with _y = b._y-itMove._steps }
                             else
-                                blk) in
+                                b) in
                         (*  Add this board to the front of the list... *)
                         currentBlocks := backStep;
                         Stack.push !currentBlocks solution;
@@ -424,7 +471,8 @@ let solveBoard listOfBlocks =
                             if not (Hashtbl.mem visited newBoard) then (
                                 Queue.add (level+1, newListOfBlocks) queue;
                                 (* Store board,move - so we can backtrack *)
-                                Hashtbl.add previousMoves newBoard move;
+                                if not (Hashtbl.mem previousMoves newBoard) then
+                                    Hashtbl.add previousMoves newBoard move;
                                 if !g_debug then (
                                     let msg = match move._direction with
                                     | Left -> "Left"
@@ -432,8 +480,10 @@ let solveBoard listOfBlocks =
                                     | Up -> "Up"
                                     | Down -> "Down" in
                                     Printf.printf
-                                        "Moving %c %s generates this:\n"
-                                        (Char.chr (65 + block._id)) msg;
+                                        "Moving %c %d %s generates this:\n"
+                                        (Char.chr (65 + block._id))
+                                        move._steps
+                                        msg;
                                     printBoard newListOfBlocks;
                                 )
                             )
