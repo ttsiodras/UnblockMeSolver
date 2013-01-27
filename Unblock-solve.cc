@@ -305,8 +305,9 @@ void SolveBoard(list<Block>& blocks)
     // Now, to implement Breadth First Search, all we need is a Queue
     // storing the states we need to investigate - so it needs to
     // be a list of board states... We'll also be maintaining
-    // the depth we traversed to reach this board state, so we use
-    // a pair of int (depth) and list of blocks (state).
+    // the depth we traversed to reach this board state, and the
+    // move to perform - so we end up with a tuple of
+    // int (depth), Move, list of blocks (state).
     typedef tuple<int, Move, list<Block> > DepthAndMoveAndState;
     list<DepthAndMoveAndState> queue;
 
@@ -338,13 +339,13 @@ void SolveBoard(list<Block>& blocks)
             // Yep - skip it
             continue;
 
-        /* Store board and move, so we can backtrack later */ \
-        BoardAndLevel key(board, oldLevel);
-        previousMoves.insert(pair<BoardAndLevel, Move>(key, move));
-
         // No, we haven't - store it so we avoid re-doing
         // the following work again in the future...
         visited.insert(board);
+
+        /* Store board and move, so we can backtrack later */ \
+        BoardAndLevel key(board, oldLevel);
+        previousMoves.insert(pair<BoardAndLevel, Move>(key, move));
 
         // Check if this board state is a winning state:
         // Find prisoner block...
@@ -373,9 +374,8 @@ void SolveBoard(list<Block>& blocks)
             list<list<Block> > solution;
             solution.push_front(copyBlocks(blocks));
 
-            map<pair<Board,int>,Move>::iterator itMove =
-                previousMoves.find(pair<Board, int>(
-                    board, level));
+            map<BoardAndLevel,Move>::iterator itMove = previousMoves.find(
+                BoardAndLevel(board, level));
             while (itMove != previousMoves.end()) {
                 if (itMove->second._blockId == -1)
                     // Sentinel - reached starting board
@@ -402,7 +402,7 @@ void SolveBoard(list<Block>& blocks)
                 solution.push_front(copyBlocks(blocks));
                 board = renderBlocks(blocks);
                 level--;
-                itMove = previousMoves.find(pair<Board, int>(board, level));
+                itMove = previousMoves.find(BoardAndLevel(board, level));
             }
             // Now that we have the full list, emit it in order
             for(list<list<Block> >::iterator itState=solution.begin();

@@ -8,6 +8,7 @@
 #include <map>
 #include <set>
 #include <list>
+#include <tuple>
 
 using namespace std;
 
@@ -284,12 +285,15 @@ void SolveBoard(list<Block>& blocks)
     // We need to store the last move that got us to a specific
     // board state - that way we can backtrack from a final board
     // state to the list of moves we used to achieve it.
-    map< Board, Move> previousMoves;
+    typedef pair<Board, int> BoardAndLevel;
+    map<BoardAndLevel, Move> previousMoves;
     // Start by storing a "sentinel" value, for the initial board
     // state - we used no Move to achieve it, so store a block id
     // of -1 to mark it:
+    int oldLevel = 0;
+    BoardAndLevel key(renderBlocks(blocks), oldLevel);
     previousMoves.insert(
-        pair<Board,Move>(renderBlocks(blocks), Move(-1, Move::left, 1)));
+        pair<BoardAndLevel, Move>(key, Move(-1, Move::left, 1)));
 
     // We must not revisit board states we have already examined,
     // so we need a 'visited' set:
@@ -298,22 +302,24 @@ void SolveBoard(list<Block>& blocks)
     // Now, to implement Breadth First Search, all we need is a Queue
     // storing the states we need to investigate - so it needs to
     // be a list of board states... We'll also be maintaining
-    // the depth we traversed to reach this board state, so we use
-    // a pair of int (depth) and list of blocks (state).
-    typedef pair<int, list<Block> > DepthAndStateTuple;
-    list<DepthAndStateTuple> queue;
+    // the depth we traversed to reach this board state, and the
+    // move to perform - so we end up with a tuple of
+    // int (depth), Move, list of blocks (state).
+    typedef tuple<int, Move, list<Block> > DepthAndMoveAndState;
+    list<DepthAndMoveAndState> queue;
 
     // Start with our initial board state, and playedMoveDepth set to 1
-    queue.push_back(DepthAndStateTuple(1, blocks));
-    int oldLevel = 0;
+    queue.push_back(DepthAndMoveAndState(
+        1, Move(-1, Move::left, 0 ), blocks));
     cout << "Depth searched:   " << oldLevel;
 
     while(!queue.empty()) {
 
         // Extract first element of the queue
         auto qtop = *queue.begin();
-        auto level = qtop.first;
-        auto blocks = qtop.second;
+        auto level = get<0>(qtop);
+        auto move = get<1>(qtop);
+        auto blocks = get<2>(qtop);
         queue.pop_front();
 
         // Report depth increase when it happens
@@ -333,6 +339,10 @@ void SolveBoard(list<Block>& blocks)
         // No, we haven't - store it so we avoid re-doing
         // the following work again in the future...
         visited.insert(board);
+
+        /* Store board and move, so we can backtrack later */ \
+        BoardAndLevel key(board, oldLevel);
+        previousMoves.insert(pair<BoardAndLevel, Move>(key, move));
 
         // Check if this board state is a winning state:
         // Find prisoner block...
@@ -357,7 +367,8 @@ void SolveBoard(list<Block>& blocks)
             list<list<Block> > solution;
             solution.push_front(copyBlocks(blocks));
 
-            auto itMove = previousMoves.find(board);
+            auto itMove = previousMoves.find(
+                BoardAndLevel(board, level));
             while (itMove != previousMoves.end()) {
                 if (itMove->second._blockId == -1)
                     // Sentinel - reached starting board
@@ -384,7 +395,8 @@ void SolveBoard(list<Block>& blocks)
                 // Add this board to the front of the list...
                 solution.push_front(copyBlocks(blocks));
                 board = renderBlocks(blocks);
-                itMove = previousMoves.find(board);
+                level--;
+                itMove = previousMoves.find(BoardAndLevel(board, level));
             }
             // Now that we have the full list, emit it in order
             for(auto& blocks: solution) {
@@ -403,16 +415,15 @@ void SolveBoard(list<Block>& blocks)
         for(auto& block: blocks) {
 
 #define COMMON_BODY(direction) \
-    auto copiedBlocks = copyBlocks(blocks);                         \
-    auto candidateBoard = renderBlocks(copiedBlocks);               \
-    if (visited.find(candidateBoard) == visited.end()) {            \
-        /* Add to the end of the queue for further study */         \
-        queue.push_back(DepthAndStateTuple(level+1, copiedBlocks)); \
-        /* Store board and move, so we can backtrack later */       \
-        previousMoves.insert(                                       \
-            pair<Board,Move>(                                       \
-                candidateBoard,                                     \
-                Move(block._id, Move::direction, distance)));       \
+    auto copiedBlocks = copyBlocks(blocks);                 \
+    auto candidateBoard = renderBlocks(copiedBlocks);       \
+    if (visited.find(candidateBoard) == visited.end()) {    \
+        /* Add to the end of the queue for further study */ \
+        queue.push_back(                                    \
+            DepthAndMoveAndState(                           \
+                level+1,                                    \
+                Move(block._id, Move::direction, distance), \
+                copiedBlocks));                             \
     }
 
             if (block._isHorizontal) {
