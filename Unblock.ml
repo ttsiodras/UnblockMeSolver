@@ -281,7 +281,7 @@ type move = {
 (* find the possible moves a block can do, and return
  * a list of tuples: (newBlock, move)   *)
 let findBlockMoves board blk =
-    (* Left/right and up/down moves will be joined in a common list 
+    (* Left/right and up/down moves will be joined in a common list
      * but we don't want that final list to have invalid moves.
      *
      * In fact we want to crop each directional move list
@@ -293,7 +293,7 @@ let findBlockMoves board blk =
      * and we want the complete road to be empty, not just
      * the target tile.
      *
-     * Since we feed the scanning loop with jumps 
+     * Since we feed the scanning loop with jumps
      * from 1 to g_boardSize-1, we want to stop at the first
      * full tile we find - cropAtFirstFullTile does this. *)
     let rec cropAtFirstFullTile = function
@@ -322,30 +322,30 @@ let findBlockMoves board blk =
         else
             None
         in
-    (* Since we feed the scanning loop with jumps from 1 to 
-     * g_boardSize-1, we want to stop at the first full tile 
+    (* Since we feed the scanning loop with jumps from 1 to
+     * g_boardSize-1, we want to stop at the first full tile
      * we found - i.e. the complete road must be empty,
      * not just the target tile!
      *
      * This is why we pipe the move list to cropAtFirstFullTile. *)
     if blk._isHorizontal then
-        let leftMoves = 
-            1--(g_boardSize-1) |> List.map 
+        let leftMoves =
+            1--(g_boardSize-1) |> List.map
                (fun distance -> makeMove (-distance) 0 Left) |>
             cropAtFirstFullTile in
         let rightMoves =
-            1--(g_boardSize-1) |> List.map 
+            1--(g_boardSize-1) |> List.map
                (fun distance -> makeMove distance 0 Right) |>
             cropAtFirstFullTile in
         (* after the crop, we join the lists of moves *)
         List.append leftMoves rightMoves
     else
         let upMoves =
-            1--(g_boardSize-1) |> List.map 
+            1--(g_boardSize-1) |> List.map
                  (fun distance -> makeMove 0 (-distance) Up) |>
             cropAtFirstFullTile in
         let downMoves =
-            1--(g_boardSize-1) |> List.map 
+            1--(g_boardSize-1) |> List.map
                  (fun distance -> makeMove 0 distance Down) |>
             cropAtFirstFullTile in
         List.append upMoves downMoves
@@ -364,9 +364,8 @@ let solveBoard listOfBlocks =
     (*  Start by storing a "sentinel" value, for the initial board *)
     (*  state - we used no Move to achieve it, so store a block id *)
     (*  of -1 to mark it: *)
-    Hashtbl.add previousMoves
-        (make_board listOfBlocks)
-        {_blockId= -1; _direction=Left; _steps=0};
+    let dummyMove = { _blockId= -1; _direction=Left; _steps=0} in
+    Hashtbl.add previousMoves (make_board listOfBlocks, 0) dummyMove;
     (*  We must not revisit board states we have already examined, *)
     (*  so we need a 'visited' set: *)
     let visited = Hashtbl.create 100000 in
@@ -374,17 +373,29 @@ let solveBoard listOfBlocks =
     (*  storing the states we need to investigate - so it needs to *)
     (*  be a list of board states... i.e. a list of list of Blocks! *)
     let queue = Queue.create () in
-    (*  Start with our initial board state *)
-    Queue.add (1, listOfBlocks) queue;
+    (*  Jumpstart the Q with initial board state and a dummy blockId *)
+    Queue.add (1, -1, dummyMove, listOfBlocks) queue;
     let currentLevel = ref 0 in
     while not (Queue.is_empty queue) do
         (*  Extract first element of the queue *)
-        let level, blocks = Queue.take queue in
+        let level, idOfMovedBlock, move, blocksOld = Queue.take queue in
         if level > !currentLevel then (
             currentLevel := level ;
             if not !g_debug then
                 Printf.printf "\b\b\b%3d%!" level;
         );
+        let blocks = blocksOld |> List.map (fun b ->
+            if b._id = idOfMovedBlock then (
+                match move._direction with
+                | Left  -> {b with _x = b._x-move._steps }
+                | Right -> {b with _x = b._x+move._steps }
+                | Up    -> {b with _y = b._y-move._steps }
+                | Down  -> {b with _y = b._y+move._steps }
+            ) else
+                b) in
+        let newBoard = make_board blocks in
+        (* Store board,level,move - so we can backtrack *)
+        Hashtbl.replace previousMoves (newBoard, level) move;
         (*  Create a Board for fast 2D access to tile state *)
         let board = make_board blocks in
         (*  Have we seen this board before? *)
@@ -410,10 +421,14 @@ let solveBoard listOfBlocks =
                 Stack.push blocks solution;
                 let currentBoard = ref board in
                 let currentBlocks = ref blocks in
+                let currentLevel = ref level in
                 let foundSentinel = ref false in
                 while not !foundSentinel &&
-                        Hashtbl.mem previousMoves !currentBoard do
-                    let itMove = Hashtbl.find previousMoves !currentBoard in
+                        Hashtbl.mem previousMoves
+                            (!currentBoard, !currentLevel) do
+                    let itMove =
+                        Hashtbl.find previousMoves
+                            (!currentBoard, !currentLevel) in
                     if itMove._blockId = -1 then
                         (*  Sentinel - reached starting board *)
                         foundSentinel := true
@@ -433,6 +448,7 @@ let solveBoard listOfBlocks =
                         (*  Add this board to the front of the list... *)
                         currentBlocks := backStep;
                         Stack.push !currentBlocks solution;
+                        currentLevel := !currentLevel - 1;
                         currentBoard := make_board backStep
                     )
                 done;
@@ -465,14 +481,11 @@ let solveBoard listOfBlocks =
                         fun (block, move) ->
                             arrayOfBlocks.(i) <- block ;
                             (* Add to the end of the queue *)
-                            let newListOfBlocks = Array.to_list arrayOfBlocks
-                            in
+                            let newListOfBlocks = Array.to_list arrayOfBlocks in
                             let newBoard = make_board newListOfBlocks in
                             if not (Hashtbl.mem visited newBoard) then (
-                                Queue.add (level+1, newListOfBlocks) queue;
-                                (* Store board,move - so we can backtrack *)
-                                if not (Hashtbl.mem previousMoves newBoard) then
-                                    Hashtbl.add previousMoves newBoard move;
+                                Queue.add
+                                    (level+1, block._id, move, blocks) queue;
                                 if !g_debug then (
                                     let msg = match move._direction with
                                     | Left -> "Left"
