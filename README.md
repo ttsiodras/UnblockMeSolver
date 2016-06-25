@@ -7,6 +7,7 @@ It's for a working version of the Game: https://github.com/carles-mallafre/Block
 As a dependency needs the World class from the Blocks Game.
 If you need to get rid of the dependency just replace the following method:
 
+```
 private ArrayList<BlockSolver> getBlocksFromWorld() {
 	ArrayList<BlockSolver> blocks = new ArrayList<BlockSolver>();
 	for (int i = 0; i < world.blocks.getChildren().size; i++) {
@@ -23,5 +24,6 @@ private ArrayList<BlockSolver> getBlocksFromWorld() {
 	}
 	return blocks;
 }
+```
 
 And provide a an array of BlockSolver
